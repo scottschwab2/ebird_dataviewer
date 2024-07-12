@@ -4,31 +4,31 @@ import sys
 import argparse
 import logging
 from sqlalchemy import create_engine, Connection
-import sqlalchemy
+# import sqlalchemy
+# import pyodbc
 
 
 logging.basicConfig(level=logging.INFO)
 LOG = logging.getLogger(__name__)
 
-# CONNECTION_STRING = 'jdbc:sqlserver://sschwabebird.database.windows.net:1433;database=ebird;user=ebird@sschwabebird;password={your_password_here};encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;'
-# CONNECTION_STRING = 'jdbc:sqlserver://sschwabebird.database.windows.net:1433;database=ebird;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;'
-# CONNECTION_STRING= "Driver={ODBC Driver 18 for SQL Server};Server=tcp:sschwabebird.database.windows.net,1433;Database=ebird;Uid=ebird;Pwd={your_password_here};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
-CONNECTION_STRING= "Driver={ODBC Driver 18 for SQL Server};Server=tcp:sschwabebird.database.windows.net,1433;Database=ebird;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
 
 DATA_PATH = 'data'
 
 
-def load_support_table(filename: str) -> pd.DataFrame:
-    return pd.read_csv(filename, sep='\t+', header=0, engine='python', encoding='latin1')
+def load_support_table(filename: str, remove_blanks: bool = False) -> pd.DataFrame:
+    sep = '\t'
+    if remove_blanks:
+        sep = '\t+'
+    return pd.read_csv(filename, sep=sep, header=0, engine='python', encoding='latin1')
 
 def write_to_azure(data: pd.DataFrame, database_connection: Connection, table_name: str):
+    LOG.info(f'Writing {table_name} to Azure')
     data.to_sql(table_name, database_connection, if_exists='replace', index=False)
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser()
-    args.add_argument('--connection_string', type=str, default=CONNECTION_STRING)
     args.add_argument('--data_path', type=str, default=DATA_PATH)
-    args.add_argument('--username', type=str, default='ebird')
+    args.add_argument('--username', type=str, default='')
     args.add_argument('--password', type=str, default='')
     args = args.parse_args()
 
@@ -43,12 +43,14 @@ if __name__ == '__main__':
         args.data_path = args.data_path[:-1]
 
     bcr_codes = load_support_table(f"{args.data_path}/BCRCodes.tsv")
-    # usfws_codes = load_support_table(DATA_PATH + 'USFWSCodes.tsv')
-    # iba_codes = load_support_table(DATA_PATH + 'IBACodes.tsv')
-    # edb = load_support_table(DATA_PATH + 'ebd_US-AL-101_202204_202204_relApr-2022.tsv')
+    usfws_codes = load_support_table(DATA_PATH + '/USFWSCodes.tsv', remove_blanks=True)
+    iba_codes = load_support_table(DATA_PATH + '/IBACodes.tsv')
+    edb = load_support_table(DATA_PATH + '/bird_data1.tsv')
 
-#CONNECTION_STRING= "Driver={ODBC Driver 18 for SQL Server};Server=tcp:sschwabebird.database.windows.net,1433;Database=ebird;Uid=ebird;Pwd={your_password_here};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
-
-    connection_string = f"mssql+pymssql://{args.username}:{args.password}@sschwabebird.database.windows.net:1433/ebird" #?driver=ODBC+Driver+18+for+SQL+Server"
+ 
+    connection_string = f"mssql+pymssql://{args.username}:{args.password}@sschwabebird.database.windows.net:1433/ebird" 
     con = create_engine(connection_string)
     write_to_azure(bcr_codes, con, 'BCRCodes')
+    write_to_azure(usfws_codes, con, 'USFWSCodes')
+    write_to_azure(iba_codes, con, 'IBACodes')
+    write_to_azure(edb, con, 'ebird_data')
